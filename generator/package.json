@@ -1,0 +1,8 @@
+{
+  "name": "type-prisma-gql-generator",
+  "version": "0.1.0",
+  "main": "index.js",
+  "dependencies": {
+    "@prisma/generator-helper": "^7.0.0"
+  }
+}

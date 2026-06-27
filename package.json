@@ -1,0 +1,66 @@
+{
+  "name": "type-prisma-gql",
+  "version": "0.1.4",
+  "description": "Lightweight TypeGraphQL optimized for Prisma 7 - no reflect-metadata required",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "homepage": "https://mo-fouad.github.io/type-prisma-gql/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mo-fouad/type-prisma-gql.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mo-fouad/type-prisma-gql/issues"
+  },
+  "files": [
+    "dist",
+    "generator"
+  ],
+  "bin": {
+    "type-prisma-gql": "generator/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "pack": "npm pack",
+    "dev": "tsc --watch",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "test:field-resolvers": "node dist/example/test-field-resolvers.js",
+    "test:advanced": "node dist/example/advanced-features-example.js",
+    "test:validation": "node dist/example/validation-example.js",
+    "test:type-utils": "node dist/example/type-utilities-example.js"
+  },
+  "keywords": [
+    "graphql",
+    "typescript",
+    "prisma",
+    "prisma7",
+    "typegraphql",
+    "decorators",
+    "graphql-schema"
+  ],
+  "author": "mo-fouad",
+  "license": "MIT",
+  "peerDependencies": {
+    "graphql": "^16.12.0",
+    "graphql-scalars": "^1.25.0"
+  },
+  "peerDependenciesMeta": {
+    "class-validator": {
+      "optional": true
+    },
+    "graphql-scalars": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "graphql": "^16.12.0",
+    "typescript": "^5.5.4",
+    "vitepress": "^1.6.3"
+  }
+}
