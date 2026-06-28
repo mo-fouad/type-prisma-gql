@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'type-prisma-gql',
   description: 'Lightweight TypeGraphQL optimized for Prisma 7 — no reflect-metadata required',
   base: '/type-prisma-gql/',
+  ignoreDeadLinks: [/^http:\/\/localhost/],
 
   head: [
     ['link', { rel: 'icon', href: '/type-prisma-gql/favicon.ico' }]
@@ -45,6 +46,12 @@ export default defineConfig({
         text: 'Prisma Integration',
         items: [
           { text: 'Prisma Generator', link: '/guide/prisma-generator' },
+        ]
+      },
+      {
+        text: 'Resources',
+        items: [
+          { text: 'Example App', link: '/guide/example' },
         ]
       }
     ],

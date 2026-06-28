@@ -1,0 +1,30 @@
+{
+  "name": "type-prisma-gql-example",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn src/server.ts",
+    "start": "ts-node src/server.ts",
+    "db:setup": "prisma migrate dev --name init",
+    "db:seed": "ts-node src/seed.ts",
+    "generate": "prisma generate"
+  },
+  "dependencies": {
+    "@apollo/server": "^5.2.0",
+    "@as-integrations/express5": "^1.1.2",
+    "@prisma/client": "^7.2.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "graphql": "^16.12.0",
+    "type-prisma-gql": "latest"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "prisma": "^7.2.0",
+    "ts-node": "^10.9.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}
