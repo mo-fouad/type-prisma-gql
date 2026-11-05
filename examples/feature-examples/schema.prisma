@@ -1,0 +1,1347 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator typegraphql {
+  provider = "type-prisma-gql"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["shard", "users", "curriculums", "activities", "messaging"]
+}
+
+//  Shared Models
+
+enum RequestStatusEnum {
+  PENDING
+  ACCEPTED
+  REFUSED
+  JOINED // for Classrooms or Groups
+  LEFT // When a Student Leave a group
+  BLOCKED
+
+  @@schema("users")
+}
+
+// Just a table to container a diffrent status strings and passing Ids to GroupStudentStatus to save Strings :D
+// This can be used with Classrooms as well.
+
+model RequestStatus {
+  statusId          Int                 @id @unique @default(autoincrement())
+  statusName        RequestStatusEnum
+  groupStudents     GroupStudents[]
+  classroomTeachers ClassroomTeachers[]
+  classroomStudents ClassroomStudents[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("requestStatus")
+  @@schema("users")
+}
+
+enum Role {
+  GUEST // this is the default role for any user
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+  SCHOOL
+  COMPANY // Maybe needed in the Futuer.
+
+  @@schema("users")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NONE
+
+  @@schema("users")
+}
+
+enum Provider {
+  GUEST // this is the default role for any user
+  BRIGHT // use user@bright to loginto the system.
+  EMAIL
+  EMAIL_PASS
+  FACEBOOK
+  GOOGLE
+  APPLE
+  WHATSAPP
+  TELEGRAM
+
+  @@schema("users")
+}
+
+// STarting Models
+// We are creating this models {UserRole,UserGender,UserCountry,UserCity} to save space in every ROLE to make it with Ids
+
+model UserRole {
+  roleId  Int       @id @default(autoincrement())
+  role    Role      @default(GUEST)
+  profile Profile[]
+
+  @@map("userRole")
+  @@schema("users")
+}
+
+model UserGender {
+  genderId Int       @id @unique @default(autoincrement())
+  gender   Gender    @default(MALE)
+  profile  Profile[]
+
+  @@map("userGender")
+  @@schema("users")
+}
+
+// Actual Models for User
+model User {
+  userId     String   @id @default(cuid())
+  provider   Provider // this for what kind of login way he use >> socials, native,or just Email
+  providerId String? // this is what we get if he logged in using any socials
+  email      String   @unique
+  password   String?
+  otpCode    String?
+
+  token   Token?
+  profile Profile?
+
+  // Relations with Types one2one
+  teacher     Teacher?
+  student     Student?
+  parent      Parent?
+  company     Company?
+  school      School?
+  appAdmin    AppAdmin?
+  schoolAdmin SchoolAdmin?
+
+  // Relation
+  accountSettings      AccountSettings?
+  notificationSettings NotificationSettings?
+  calendars            Calendar[]
+  bookAccesses         BookAccess[]
+
+  sentMessages      DirectMessage[]    @relation("SentMessages")
+  receivedMessages  DirectMessage[]    @relation("ReceivedMessages")
+  groupMessages     GroupMessage[]
+  classroomMessages ClassroomMessage[]
+
+  blockedUser  MessageBlocking[] @relation("Blocked")
+  blockingUser MessageBlocking[] @relation("Blocker")
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  notifications  Notification[]
+  messageReports MessageReport[]
+
+  // Indexes for authentication performance
+  @@index([email, provider]) // For login queries by email + provider
+  @@index([provider, providerId]) // For social login queries
+  @@index([createdAt]) // For user analytics and cleanup queries
+  @@map("user")
+  @@schema("users")
+}
+
+model UserCountry {
+  countryId Int    @id @unique @default(autoincrement())
+  name      String
+
+  profile  Profile[]
+  userCity UserCity[]
+
+  @@map("userCountry")
+  @@schema("users")
+}
+
+model UserCity {
+  cityId Int    @id @unique @default(autoincrement())
+  name   String
+
+  // Relations
+  cityCountry UserCountry @relation(fields: [countryId], references: [countryId])
+  countryId   Int
+
+  profile Profile[]
+
+  @@index([countryId])
+  @@map("userCity")
+  @@schema("users")
+}
+
+model Profile {
+  // Link Profile With User is Mandatory
+  user      User    @relation(fields: [profileId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  profileId String  @unique
+  fullName  String?
+  tagName   String? @unique
+
+  // Relation with user Role
+  userRole UserRole? @relation(fields: [roleId], references: [roleId])
+  roleId   Int?
+
+  // Relatiion with userGender
+  userGender UserGender? @relation(fields: [genderId], references: [genderId])
+  genderId   Int?
+
+  phone       String?
+  about       String?      @db.Text
+  photoUrl    String?
+  // Relation with userContry
+  userCountry UserCountry? @relation(fields: [countryId], references: [countryId])
+  countryId   Int?
+
+  // Relation with userCity
+  userCity UserCity? @relation(fields: [cityId], references: [cityId])
+  cityId   Int?
+
+  // Relations with userTypes
+  company     Company[]
+  teacher     Teacher[]
+  student     Student[]
+  school      School[]
+  parent      Parent[]
+  appAdmin    AppAdmin[]
+  schoolAdmin SchoolAdmin[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([profileId])
+  @@index([roleId])
+  @@index([genderId])
+  @@index([countryId])
+  @@index([cityId])
+  @@index([profileId, roleId]) // For auth context queries (user lookup with role)
+  @@index([tagName]) // For user search by tagName
+  @@map("profile")
+  @@schema("users")
+}
+
+model Token {
+  tokenId String @id @default(cuid())
+
+  User   User   @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  userId String @unique
+
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("token")
+  @@schema("users")
+}
+
+/////////////////////
+// User Types and Relations
+/////////////////////
+
+model Teacher {
+  User        User         @relation(fields: [teacherId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  teacherId   String       @id
+  faveTeacher FavTeachers?
+  books       Book[]
+  // Relelations With Profile
+  profile     Profile?     @relation(fields: [profileId], references: [profileId])
+  profileId   String?
+
+  schools           SchoolTeachers[]
+  followers         TeacherFollowers[]
+  Group             Group[]
+  ClassroomTeachers ClassroomTeachers[]
+  activityTemplates TeacherActivityTemplate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+  @@index([profileId])
+  @@map("teacher")
+  @@schema("users")
+}
+
+model FavTeachers {
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId], onDelete: Cascade, onUpdate: Cascade)
+  teacherId String
+  order     Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([teacherId])
+  @@index([teacherId])
+  @@map("faveTeachers")
+  @@schema("users")
+}
+
+model Student {
+  user      User   @relation(fields: [studentId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  studentId String @id
+
+  groupStudents     GroupStudents[]
+  classroomStudents ClassroomStudents[]
+
+  group   Group?  @relation(fields: [groupId], references: [groupId])
+  groupId String?
+
+  schools           SchoolStudents[]
+  parents           ParentStudents[]
+  followingTeachers TeacherFollowers[]
+  activities        StudentActivity[]
+
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  studyActivities StudyActivity[]
+
+  @@index([studentId])
+  @@index([profileId])
+  @@index([groupId])
+  @@map("student")
+  @@schema("users")
+}
+
+enum AdminRole {
+  ADMIN
+  ASSISTANCE
+
+  @@schema("users")
+}
+
+model AppAdmin {
+  User    User      @relation(fields: [adminId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  adminId String    @id
+  role    AdminRole @default(ADMIN)
+
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+  @@index([adminId])
+  @@map("appAdmin")
+  @@schema("users")
+}
+
+model Company {
+  User      User     @relation(fields: [companyId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  companyId String   @id
+  books     Book[]
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([profileId])
+  @@map("company")
+  @@schema("users")
+}
+
+model Parent {
+  User     User   @relation(fields: [parentId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  parentId String @id
+
+  students ParentStudents[]
+
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([profileId])
+  @@map("parent")
+  @@schema("users")
+}
+
+model Book {
+  bookId      String  @id @default(cuid())
+  title       String
+  description String?
+
+  createdBy   String
+  creatorType String // e.g., "TEACHER", "SCHOOL", "COMPANY"
+
+  Teacher   Teacher? @relation(fields: [teacherId], references: [teacherId])
+  teacherId String?
+
+  School   School? @relation("SchoolCreatedBooks", fields: [schoolId], references: [schoolId])
+  schoolId String?
+
+  Company   Company? @relation(fields: [companyId], references: [companyId])
+  companyId String?
+
+  purchases SchoolBookPurchase[]
+  accesses  BookAccess[]
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  classroomBooks ClassroomBooks[]
+
+  @@index([teacherId])
+  @@index([schoolId])
+  @@index([companyId])
+  @@map("book")
+  @@schema("users")
+}
+
+// from Paretns to Students.
+model ParentStudents {
+  parent    Parent  @relation(fields: [parentId], references: [parentId])
+  parentId  String
+  student   Student @relation(fields: [studentId], references: [studentId])
+  studentId String
+
+  @@id([parentId, studentId])
+  @@index([studentId])
+  @@index([parentId])
+  @@map("parentStudents")
+  @@schema("users")
+}
+
+// where students can flow the Teachers,
+model TeacherFollowers {
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId])
+  teacherId String
+  student   Student @relation(fields: [studentId], references: [studentId])
+  studentId String
+
+  @@id([teacherId, studentId])
+  @@index([teacherId])
+  @@index([studentId])
+  @@map("teacherFollowers")
+  @@schema("users")
+}
+
+// when some one buy a book,
+model BookAccess {
+  book   Book   @relation(fields: [bookId], references: [bookId])
+  bookId String
+  user   User   @relation(fields: [userId], references: [userId])
+  userId String
+
+  accessType String // e.g., "PURCHASED", "BORROWED", "FREE_ACCESS"
+
+  @@id([bookId, userId])
+  @@index([bookId])
+  @@index([userId])
+  @@map("bookAccess")
+  @@schema("users")
+}
+
+model School {
+  User     User   @relation(fields: [schoolId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  schoolId String @id
+
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+
+  teachers     SchoolTeachers[]
+  students     SchoolStudents[]
+  createdBooks Book[]           @relation("SchoolCreatedBooks")
+  admins       SchoolAdmins[] // Relation many to many
+
+  classrooms Classroom[] // One-to-many relationship with Classroom
+  purchases  SchoolBookPurchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([profileId])
+  @@map("school")
+  @@schema("users")
+}
+
+model SchoolAdmin {
+  User    User   @relation(fields: [adminId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  adminId String @id
+
+  // Relelations With Profile
+  profile   Profile? @relation(fields: [profileId], references: [profileId])
+  profileId String?
+
+  schools SchoolAdmins[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+  @@index([adminId])
+  @@map("schoolAdmin")
+  @@schema("users")
+}
+
+model SchoolBookPurchase {
+  school   School @relation(fields: [schoolId], references: [schoolId])
+  schoolId String
+  book     Book   @relation(fields: [bookId], references: [bookId])
+  bookId   String
+
+  purchaseDate DateTime @default(now())
+  quantity     Int
+
+  @@id([schoolId, bookId])
+  @@index([schoolId])
+  @@index([bookId])
+  @@map("schoolBookPurchase")
+  @@schema("users")
+}
+
+// Relations Many to Many
+model SchoolTeachers {
+  school   School @relation(fields: [schoolId], references: [schoolId])
+  schoolId String
+
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId])
+  teacherId String
+
+  @@id([schoolId, teacherId])
+  @@index([schoolId])
+  @@index([teacherId])
+  @@map("schoolTeachers")
+  @@schema("users")
+}
+
+model SchoolStudents {
+  school    School  @relation(fields: [schoolId], references: [schoolId])
+  schoolId  String
+  student   Student @relation(fields: [studentId], references: [studentId])
+  studentId String
+
+  @@id([schoolId, studentId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@map("schoolStudents")
+  @@schema("users")
+}
+
+// Relation between School and SchoolAdmins.
+model SchoolAdmins {
+  school   School @relation(fields: [schoolId], references: [schoolId])
+  schoolId String
+
+  admin   SchoolAdmin @relation(fields: [adminId], references: [adminId])
+  adminId String
+
+  role        String // e.g., "PRINCIPAL", "VICE_PRINCIPAL", "DEPARTMENT_HEAD"
+  permissions Json? // Store detailed permissions as a JSON object
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([schoolId, adminId])
+  @@index([schoolId])
+  @@index([adminId])
+  @@map("schoolAdmins")
+  @@schema("users")
+}
+
+// the School year here is the like // 1st Scondary, 2nd Seconday,
+
+model Group {
+  groupId          String  @id @default(cuid())
+  groupName        String
+  groupDescription String?
+
+  isOpen Boolean @default(false) // used to set limits to the groups also to track the students or not.
+
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId], onDelete: Cascade, onUpdate: Cascade)
+  teacherId String
+
+  subject   Subject? @relation(fields: [subjectId], references: [subjectId])
+  subjectId Int?
+
+  curriculums  Curriculum @relation(fields: [curriculumId], references: [curriculumId], onDelete: Cascade, onUpdate: Cascade)
+  curriculumId Int
+
+  schoolYear   SchoolYear? @relation(fields: [schoolYearId], references: [schoolYearId])
+  schoolYearId Int?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  students          Student[]
+  groupStudents     GroupStudents[]
+  activities        Activity[]
+  studentActivities StudentActivity[]
+  groupMessages     GroupMessage[]
+  messageBlockings  MessageBlocking[]
+  calendar          Calendar?
+  feeds             Feeds[]
+
+  @@index([teacherId])
+  @@index([curriculumId])
+  @@index([subjectId])
+  @@index([schoolYearId])
+  @@map("group")
+  @@schema("users")
+}
+
+// the Studens who are joined to those groups or request to join.
+model GroupStudents {
+  group   Group  @relation(fields: [groupId], references: [groupId], onDelete: Cascade, onUpdate: Cascade)
+  groupId String
+
+  student   Student @relation(fields: [studentId], references: [studentId], onDelete: Cascade, onUpdate: Cascade)
+  studentId String
+
+  status   RequestStatus @relation(fields: [statusId], references: [statusId])
+  statusId Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, studentId])
+  @@index([groupId])
+  @@index([statusId])
+  @@index([studentId])
+  @@index([groupId, statusId]) // For efficient queries by group and status (e.g., active members)
+  @@index([studentId, statusId]) // For efficient queries by student and status
+  @@map("groupStudents")
+  @@schema("users")
+}
+
+// Specaialty for every subject, Math, Since, Arabic or English or Bed3 :P
+// and then we Creact every Curriculum based on Specialty like  English External Book, or English Minstry book
+model Subject {
+  subjectId   Int          @id @unique @default(autoincrement())
+  name        String
+  curriculums Curriculum[] // One-to-many relationship
+
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  groups                   Group[]
+  teacherActivityTemplates TeacherActivityTemplate[]
+  studyActivities          StudyActivity[]
+
+  @@map("subject")
+  @@schema("curriculums")
+}
+
+// from 1 to 14 currentSchool Year :D
+model SchoolYear {
+  schoolYearId Int    @id @unique @default(autoincrement())
+  name         String
+  order        Int
+
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  groups                   Group[]
+  curricula                Curriculum[]
+  teacherActivityTemplates TeacherActivityTemplate[]
+
+  @@map("schoolYear")
+  @@schema("curriculums")
+}
+
+model Curriculum {
+  curriculumId          Int     @id @unique @default(autoincrement())
+  curriculumName        String
+  curriculumDescription String?
+  curriculumImage       String?
+  curriculumStatus      String? @default("active")
+
+  subject   Subject? @relation(fields: [subjectId], references: [subjectId])
+  subjectId Int?
+
+  schoolYear   SchoolYear? @relation(fields: [schoolYearId], references: [schoolYearId])
+  schoolYearId Int?
+
+  units                Unit[]
+  groups               Group[]
+  ClassroomCurriculums ClassroomCurriculums[]
+
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  teacherActivityTemplates TeacherActivityTemplate[]
+  studyActivities          StudyActivity[]
+  classroomTeachers        ClassroomTeachers[]
+
+  @@index([subjectId])
+  @@index([schoolYearId])
+  @@map("curriculum")
+  @@schema("curriculums")
+}
+
+model Unit {
+  unitId          Int     @id @unique @default(autoincrement())
+  unitName        String
+  unitDescription String?
+  unitOrder       Int
+
+  curriculums  Curriculum @relation(fields: [curriculumId], references: [curriculumId], onDelete: Cascade, onUpdate: Cascade)
+  curriculumId Int
+
+  lessons Lesson[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([curriculumId])
+  @@map("unit")
+  @@schema("curriculums")
+}
+
+model Lesson {
+  lessonId          Int     @id @unique @default(autoincrement())
+  lessonName        String
+  lessonDescription String?
+  lessonOrder       Int
+  lessonStatus      String?
+  lessonImage       String?
+  lessonVideo       String?
+
+  unit   Unit @relation(fields: [unitId], references: [unitId], onDelete: Cascade, onUpdate: Cascade)
+  unitId Int
+
+  sections Section[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([unitId])
+  @@map("lesson")
+  @@schema("curriculums")
+}
+
+model Section {
+  sectionId          Int     @id @unique @default(autoincrement())
+  sectionName        String
+  sectionDescription String?
+  sectionOrder       Int
+  sectionStatus      String?
+  sectionImage       String?
+  sectionVideo       String?
+
+  lesson   Lesson @relation(fields: [lessonId], references: [lessonId], onDelete: Cascade, onUpdate: Cascade)
+  lessonId Int
+
+  questions Question[]
+
+  questionIds String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lessonId])
+  @@map("section")
+  @@schema("curriculums")
+}
+
+// May be move this to AWS DocumentDB >> for now we Save it as a JSON so we can easily query it.
+// the Json quesiotn can have the title, type, options, correct answer, and more.
+
+model Question {
+  questionId   String @id @unique @default(cuid())
+  questionType String
+  questionJson Json   @db.Json
+
+  section   Section @relation(fields: [sectionId], references: [sectionId], onDelete: Cascade, onUpdate: Cascade)
+  sectionId Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId])
+  @@map("question")
+  @@schema("curriculums")
+}
+
+enum ActivityTypeEnum {
+  HOMEWORK
+  EXAM
+  QUIZ
+
+  @@schema("activities")
+}
+
+model ActivityType {
+  typeId     Int              @id @unique @default(autoincrement())
+  typeName   ActivityTypeEnum
+  activities Activity[]
+
+  @@map("activityType")
+  @@schema("activities")
+}
+
+enum ActivityStatusEnum {
+  PENDING
+  DONE
+
+  @@schema("activities")
+}
+
+model ActivityStatus {
+  statusId          Int                @id @unique @default(autoincrement())
+  statusName        ActivityStatusEnum
+  studentActivities StudentActivity[]
+
+  @@map("activityStatus")
+  @@schema("activities")
+}
+
+// should Create Activity Template,
+// the Activity Template should be Related to Sepfici Curriculum, so it can be used for Multiple Classes or Groups.
+// it should have refrence to the Creator so we can list the Created tempaltes for 1 user now Teachers.
+
+model TeacherActivityTemplate {
+  actTemplateId   String @id @unique @default(cuid())
+  actTemplateName String
+
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId], onDelete: Cascade)
+  teacherId String
+
+  subject   Subject @relation(fields: [subjectId], references: [subjectId])
+  subjectId Int
+
+  curriculums  Curriculum @relation(fields: [curriculumId], references: [curriculumId], onDelete: Cascade, onUpdate: Cascade)
+  curriculumId Int
+
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [schoolYearId])
+  schoolYearId Int
+
+  questions Json? @db.Json // the full Questions Json
+  options   Json? @db.Json // the full Options Json
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  activities Activity[]
+
+  @@index([subjectId])
+  @@index([curriculumId])
+  @@index([schoolYearId])
+  @@index([teacherId])
+  @@map("teacherActivityTemplate")
+  @@schema("activities")
+}
+
+// Where you can Create the Acitivty for Students.
+model Activity {
+  activityId   String @id @unique @default(cuid())
+  activityName String
+
+  activityType ActivityType @relation(fields: [typeId], references: [typeId])
+  typeId       Int
+
+  random Boolean @default(true) // to randomized Students Activity.
+
+  group   Group?  @relation(fields: [groupId], references: [groupId], onDelete: Cascade, onUpdate: Cascade)
+  groupId String?
+
+  classRoom Classroom? @relation(fields: [classId], references: [classId], onDelete: Cascade, onUpdate: Cascade)
+  classId   String?
+
+  // if the Activity created based on a template it should read the questions from that template,
+  teacherActivityTemplate TeacherActivityTemplate? @relation(fields: [actTemplateId], references: [actTemplateId], onDelete: Cascade, onUpdate: Cascade)
+  actTemplateId           String?
+
+  questions Json? @db.Json // the full Questions Json
+  options   Json? @db.Json // the full Options Json
+
+  studentActivity StudentActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([typeId])
+  @@index([actTemplateId])
+  @@index([groupId])
+  @@index([classId])
+  @@map("activity")
+  @@schema("activities")
+}
+
+// this is basically groupStudentActivity or ClassStudentActivity, where we store if the student took this Activity or not,
+model StudentActivity {
+  stuActId String @id @unique @default(cuid())
+
+  activity   Activity @relation(fields: [activityId], references: [activityId], onDelete: Cascade)
+  activityId String
+
+  student   Student @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+  studentId String
+
+  group   Group?  @relation(fields: [groupId], references: [groupId], onDelete: Cascade)
+  groupId String?
+
+  classRoom Classroom? @relation(fields: [classId], references: [classId], onDelete: Cascade, onUpdate: Cascade)
+  classId   String?
+
+  status   ActivityStatus @relation(fields: [statusId], references: [statusId], onDelete: Cascade)
+  statusId Int
+
+  // this can be created by Teacher for this group Directly,
+  assigned Boolean? @default(false) // this should be a useRelation to Teacher.
+
+  result         String? // should store how much
+  correctAnswers Int?
+  totalQuestions Int?
+
+  attemptCount   Int? @default(1)
+  completionTime Int? // Time taken to complete the activity (in seconds)
+
+  answersLog      Json?     @db.Json // this should store all Student Answers.
+  lastAttemptDate DateTime? @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activityId])
+  @@index([studentId])
+  @@index([groupId])
+  @@index([classId])
+  @@index([statusId])
+  @@map("studentActivity")
+  @@schema("activities")
+}
+
+// created by Students to practice for something
+model StudyActivity {
+  studyActId   String @id @unique @default(cuid())
+  activityName String
+
+  student   Student @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+  studentId String
+
+  // pick Supject, then pick curriculem >
+  subject   Subject @relation(fields: [subjectId], references: [subjectId])
+  subjectId Int
+
+  curriculums  Curriculum @relation(fields: [curriculumId], references: [curriculumId], onDelete: Cascade, onUpdate: Cascade)
+  curriculumId Int
+
+  // Generated Questions from the System
+  questions Json  @db.Json // the full Questions Json
+  options   Json? @db.Json // the full Options Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subjectId])
+  @@index([studentId])
+  @@index([curriculumId])
+  @@map("studyActivity")
+  @@schema("activities")
+}
+
+// Maybe Create StudyActivityAnswerLog,
+// Main enums for notification system
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  WHATSAPP
+
+  @@schema("users")
+}
+
+enum NotificationType {
+  // System & General
+  GENERAL // General updates
+  APP_UPDATES // App specific updates
+  NEWS // News updates
+
+  // Messaging
+  MESSAGE_GROUP // Group messages
+  MESSAGE_CLASSROOM // Classroom messages
+  MESSAGE_DIRECT // Direct messages
+
+  // Activities
+  ACTIVITY_NEW // New activities (for students)
+  ACTIVITY_RESULT // Activity results (for teachers)
+
+  // Groups
+  GROUP_REQUESTS
+
+  // Future features
+  CALENDAR_EVENT // Calendar related (for both)
+  STATISTICS_REPORT // Statistics related
+
+  @@schema("users")
+}
+
+enum NotificationState {
+  NEW // Unread notifications
+  READ // Read notifications
+
+  @@schema("users")
+}
+
+// User Settings Models
+model AccountSettings {
+  user   User   @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  userId String @unique
+
+  language String? @default("en_US")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("accountSettings")
+  @@schema("users")
+}
+
+model NotificationSettings {
+  user   User   @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  userId String @unique
+
+  enabled Boolean
+
+  // Contact methods
+  pushTokens String[] @default([])
+  email      String?
+  whatsapp   String?
+
+  // Preferences stored as JSON
+  // {
+  //   "MESSAGE_GROUP": {
+  //     "enabled": true,
+  //     "channels": ["PUSH", "EMAIL"]
+  //   }
+  // }
+  preferences Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("notificationSettings")
+  @@schema("users")
+}
+
+// Notification Storage Model
+model Notification {
+  id      Int               @id @unique @default(autoincrement()) @map("notificationId")
+  message String
+  type    NotificationType
+  state   NotificationState @default(NEW)
+
+  // Recipient
+  user   User   @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  // Optional metadata as JSON
+  metadata Json? @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([state])
+  @@index([userId])
+  @@map("notification")
+  @@schema("users")
+}
+
+// Classrooms, is related to Schools, Every classroom, should have Teachers, Students and different curriculums
+// Also will have Open messages.
+
+model Classroom {
+  classId          String  @id @default(cuid())
+  className        String
+  classDescription String?
+
+  school   School @relation(fields: [schoolId], references: [schoolId], onDelete: Cascade, onUpdate: Cascade)
+  schoolId String
+
+  teachers      ClassroomTeachers[]
+  students      ClassroomStudents[]
+  curriculums   ClassroomCurriculums[]
+  assignedBooks ClassroomBooks[]
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  activities        Activity[]
+  studentActivities StudentActivity[]
+  classroomMessages ClassroomMessage[]
+  messageBlockings  MessageBlocking[]
+  calendar          Calendar?
+  feeds             Feeds[]
+
+  @@index([schoolId])
+  @@map("classroom")
+  @@schema("users")
+}
+
+// Intermediate models for many-to-many relationships Between Classrooms, Teachers and assigned Curriculums.
+model ClassroomTeachers {
+  teacher   Teacher @relation(fields: [teacherId], references: [teacherId])
+  teacherId String
+
+  classroom Classroom @relation(fields: [classId], references: [classId])
+  classId   String
+
+  curriculum   Curriculum @relation(fields: [curriculumId], references: [curriculumId], onDelete: Cascade)
+  curriculumId Int
+
+  status   RequestStatus @relation(fields: [statusId], references: [statusId])
+  statusId Int
+
+  @@id([teacherId, classId])
+  @@index([statusId])
+  @@index([classId])
+  @@index([teacherId])
+  @@index([curriculumId])
+  @@map("classroomTeacher")
+  @@schema("users")
+}
+
+model ClassroomStudents {
+  student   Student @relation(fields: [studentId], references: [studentId])
+  studentId String
+
+  classroom Classroom @relation(fields: [classId], references: [classId])
+  classId   String
+
+  status   RequestStatus @relation(fields: [statusId], references: [statusId])
+  statusId Int
+
+  @@id([studentId, classId])
+  @@index([classId])
+  @@index([studentId])
+  @@index([statusId])
+  @@map("classroomStudent")
+  @@schema("users")
+}
+
+model ClassroomCurriculums {
+  classroom Classroom @relation(fields: [classId], references: [classId])
+  classId   String
+
+  curriculum   Curriculum @relation(fields: [curriculumId], references: [curriculumId])
+  curriculumId Int
+
+  @@id([curriculumId, classId])
+  @@index([classId])
+  @@index([curriculumId])
+  @@map("classroomCurriculum")
+  @@schema("users")
+}
+
+// if the School Admin buy a book or created it ,, he can give it to the class.
+model ClassroomBooks {
+  classroom Classroom @relation(fields: [classId], references: [classId])
+  classId   String
+
+  book   Book   @relation(fields: [bookId], references: [bookId])
+  bookId String
+
+  assignedBy String // ID of the user who assigned the book (could be a teacher or school admin)
+  assignedAt DateTime @default(now())
+
+  @@id([classId, bookId])
+  @@index([bookId])
+  @@map("classroomBook")
+  @@schema("users")
+}
+
+model DirectMessage {
+  directMessageId Int    @id @default(autoincrement())
+  content         String
+
+  sender   User   @relation("SentMessages", fields: [senderId], references: [userId])
+  senderId String
+
+  recipient   User   @relation("ReceivedMessages", fields: [recipientId], references: [userId])
+  recipientId String
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  messageReports MessageReport[]
+
+  @@index([recipientId])
+  @@index([senderId])
+  @@map("directMessage")
+  @@schema("messaging")
+}
+
+model GroupMessage {
+  groupMessageId Int    @id @default(autoincrement())
+  content        String
+
+  sender   User   @relation(fields: [senderId], references: [userId])
+  senderId String
+
+  group   Group  @relation(fields: [groupId], references: [groupId])
+  groupId String
+
+  reports MessageReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([senderId])
+  @@map("groupMessage")
+  @@schema("messaging")
+}
+
+model ClassroomMessage {
+  classMessageId Int    @id @default(autoincrement())
+  content        String
+
+  sender   User   @relation(fields: [senderId], references: [userId])
+  senderId String
+
+  classroom Classroom @relation(fields: [classId], references: [classId])
+  classId   String
+
+  reports MessageReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classId])
+  @@index([senderId])
+  @@map("classroomMessage")
+  @@schema("messaging")
+}
+
+// Message Reporting
+model MessageReport {
+  reportId Int    @id @default(autoincrement())
+  reason   String
+
+  reporter   User   @relation(fields: [reporterId], references: [userId])
+  reporterId String
+
+  // relations to reported messages
+  directMessage   DirectMessage? @relation(fields: [directMessageId], references: [directMessageId])
+  directMessageId Int? // these fields are optional because a report relates to only one of these types
+
+  groupMessage   GroupMessage? @relation(fields: [groupMessageId], references: [groupMessageId])
+  groupMessageId Int?
+
+  classroomMessage ClassroomMessage? @relation(fields: [classMessageId], references: [classMessageId])
+  classMessageId   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([directMessageId])
+  @@index([groupMessageId])
+  @@index([classMessageId])
+  @@map("messageReport")
+  @@schema("messaging")
+}
+
+model MessageBlocking {
+  blockingId Int @id @default(autoincrement())
+
+  blockedUser   User   @relation("Blocked", fields: [blockedUserId], references: [userId])
+  blockedUserId String
+
+  blockingUser   User   @relation("Blocker", fields: [blockingUserId], references: [userId])
+  blockingUserId String
+
+  // relations to blocked messages
+  group   Group?  @relation(fields: [groupId], references: [groupId])
+  groupId String?
+
+  classroom Classroom? @relation(fields: [classId], references: [classId])
+  classId   String?
+
+  directBlock Boolean? @default(false) // if a user is blocking another user.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([blockingUserId, blockedUserId]) // a user can block another user only once
+  @@index([blockedUserId])
+  @@index([blockingUserId])
+  @@index([groupId])
+  @@index([classId])
+  @@map("messageBlocking")
+  @@schema("messaging")
+}
+
+// Calendar System
+model Calendar {
+  calendarId  String  @id @default(cuid())
+  name        String
+  description String?
+
+  user   User?   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  userId String?
+
+  group   Group?  @relation(fields: [groupId], references: [groupId], onDelete: Cascade)
+  groupId String? @unique
+
+  classroom Classroom? @relation(fields: [classId], references: [classId], onDelete: Cascade)
+  classId   String?    @unique
+
+  events CalendarEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([classId])
+  @@map("calendar")
+  @@schema("users")
+}
+
+model CalendarEvent {
+  eventId     String   @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+
+  calendar   Calendar @relation(fields: [calendarId], references: [calendarId], onDelete: Cascade)
+  calendarId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([calendarId])
+  @@map("calendarEvent")
+  @@schema("users")
+}
+
+// Update System
+enum UpdateType {
+  GROUP
+  HOME
+  CLASSROOM
+
+  @@schema("users")
+}
+
+model Feeds {
+  updateId String      @id @default(cuid())
+  content  String
+  type     UpdateType? // GROUP, HOME, CLASSROOM for now
+
+  group   Group?  @relation(fields: [groupId], references: [groupId], onDelete: SetNull)
+  groupId String?
+
+  classroom Classroom? @relation(fields: [classId], references: [classId], onDelete: SetNull)
+  classId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([classId])
+  @@map("feeds")
+  @@schema("users")
+}

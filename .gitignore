@@ -4,3 +4,6 @@ dist/
 .DS_Store
 docs/.vitepress/dist
 docs/.vitepress/cache
+
+# upstream libraries, downloaded by scripts/sync-reference.sh
+reference/

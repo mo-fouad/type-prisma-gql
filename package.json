@@ -28,7 +28,8 @@
     "test:coverage": "jest --coverage",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "ref:sync": "bash scripts/sync-reference.sh"
   },
   "keywords": [
     "graphql",
